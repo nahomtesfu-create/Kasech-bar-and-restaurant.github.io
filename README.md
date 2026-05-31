@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -105,6 +105,22 @@
         .chart-bar-inner { height: 100%; background: #e94560; border-radius: 5px; transition: width 0.5s; }
         .chart-value { width: 50px; text-align: right; font-size: 12px; }
         
+        /* Performance Graph Styles */
+        .performance-graph { background: #16213e; border-radius: 10px; padding: 20px; margin-bottom: 15px; }
+        .graph-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .graph-filters { display: flex; gap: 10px; }
+        .graph-filter-btn { padding: 6px 12px; background: #0f3460; border: none; border-radius: 15px; color: #fff; font-size: 12px; cursor: pointer; }
+        .graph-filter-btn.active { background: #e94560; }
+        .graph-canvas-container { position: relative; height: 250px; width: 100%; }
+        .graph-svg { width: 100%; height: 100%; }
+        .graph-line { fill: none; stroke: #e94560; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+        .graph-area { fill: rgba(233, 69, 96, 0.2); stroke: none; }
+        .graph-dot { fill: #e94560; stroke: #fff; stroke-width: 2; }
+        .graph-grid-line { stroke: #0f3460; stroke-width: 1; }
+        .graph-axis-text { fill: #aaa; font-size: 10px; }
+        .graph-tooltip { position: absolute; background: #0f3460; padding: 8px 12px; border-radius: 8px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 10; }
+        .graph-tooltip.show { opacity: 1; }
+        
         .trans-list { display: flex; flex-direction: column; gap: 10px; }
         .trans-item { background: #16213e; padding: 15px; border-radius: 10px; }
         .trans-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
@@ -123,9 +139,13 @@
         .empty-state { text-align: center; color: #aaa; padding: 60px 20px; }
         .empty-state-icon { font-size: 48px; margin-bottom: 15px; }
         
+        .cancel-btn { background: #e74c3c; color: #fff; padding: 5px 10px; border: none; border-radius: 5px; font-size: 12px; cursor: pointer; margin-right: 5px; }
+        .refund-btn { background: #f39c12; color: #fff; padding: 5px 10px; border: none; border-radius: 5px; font-size: 12px; cursor: pointer; }
+        
         @media (min-width: 768px) {
             .items-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
             .nav-tab { font-size: 14px; padding: 15px 20px; }
+            .graph-canvas-container { height: 300px; }
         }
     </style>
 </head>
@@ -208,7 +228,6 @@
             <input type="text" class="search-box" id="invSearch" placeholder="Search items..." oninput="renderInventory()">
             <div class="inventory-list" id="inventoryList"></div>
             
-            <!-- Add/Edit Item Modal -->
             <div id="itemModal" class="modal-overlay hidden">
                 <div class="modal">
                     <h2 id="itemModalTitle">Add New Item</h2>
@@ -264,6 +283,22 @@
                 </div>
             </div>
             
+            <!-- Store Performance Graph -->
+            <div class="performance-graph">
+                <div class="graph-header">
+                    <h3>📈 Store Performance</h3>
+                    <div class="graph-filters">
+                        <button class="graph-filter-btn active" onclick="setGraphPeriod('week')">Week</button>
+                        <button class="graph-filter-btn" onclick="setGraphPeriod('month')">Month</button>
+                        <button class="graph-filter-btn" onclick="setGraphPeriod('year')">Year</button>
+                    </div>
+                </div>
+                <div class="graph-canvas-container" id="graphContainer">
+                    <svg class="graph-svg" id="performanceGraph"></svg>
+                    <div class="graph-tooltip" id="graphTooltip"></div>
+                </div>
+            </div>
+            
             <div class="chart-container">
                 <h3 style="margin-bottom:15px;">Top Selling Items</h3>
                 <div id="topItemsChart"></div>
@@ -293,7 +328,6 @@
                 </div>
             </div>
             
-            <!-- Cash Payment -->
             <div id="cashSection" class="cash-section hidden">
                 <div class="amount-display">Amount Due: <span id="cashAmount">0.00</span> ETB</div>
                 <div style="text-align:center;margin-bottom:10px;">Customer Paid:</div>
@@ -320,7 +354,6 @@
                 <button class="btn btn-success" id="completeCashBtn" onclick="completeCashPayment()" disabled>Complete Payment</button>
             </div>
             
-            <!-- Mobile Banking -->
             <div id="mobileSection" class="mobile-section hidden">
                 <div class="amount-display">Amount: <span id="mobileAmount">0.00</span> ETB</div>
                 <div style="text-align:center;margin-bottom:10px;">Upload Payment Screenshot</div>
@@ -363,10 +396,8 @@
             { username: 'cashier2', password: 'cash123', role: 'cashier', name: 'Cashier Two' }
         ];
 
-        // EMPTY INVENTORY - Start from scratch
         const defaultItems = [];
 
-        // Initialize data from localStorage or defaults (empty)
         let users = JSON.parse(localStorage.getItem('kb_users')) || [...defaultUsers];
         let items = JSON.parse(localStorage.getItem('kb_items')) || [...defaultItems];
         let transactions = JSON.parse(localStorage.getItem('kb_transactions')) || [];
@@ -378,6 +409,7 @@
         let paymentMethod = null;
         let cashPaid = '';
         let mobileScreenshotData = null;
+        let graphPeriod = 'week';
 
         // ==================== AUTHENTICATION ====================
         function login() {
@@ -667,6 +699,7 @@
         }
 
         function completeTransaction(method, total, paid, change, screenshot = null) {
+            // Deduct stock
             cart.forEach(cartItem => {
                 const item = items.find(i => i.id === cartItem.id);
                 if (item) {
@@ -683,7 +716,8 @@
                 paid: paid,
                 change: change,
                 cashier: currentUser.name,
-                screenshot: screenshot
+                screenshot: screenshot,
+                status: 'completed'
             };
             
             transactions.push(transaction);
@@ -723,13 +757,13 @@
             }
             
             list.innerHTML = todayTrans.reverse().map(t => `
-                <div class="trans-item">
+                <div class="trans-item" style="${t.status === 'cancelled' ? 'opacity:0.6;border-left:3px solid #e74c3c;' : ''}">
                     <div class="trans-header">
                         <div>
-                            <div class="trans-id">${t.id}</div>
+                            <div class="trans-id">${t.id} ${t.status === 'cancelled' ? '<span style="color:#e74c3c;">[CANCELLED]</span>' : ''}</div>
                             <div class="trans-details">${new Date(t.date).toLocaleTimeString()} | ${t.cashier}</div>
                         </div>
-                        <div class="trans-amount">${t.total.toFixed(2)} ETB</div>
+                        <div class="trans-amount" style="${t.status === 'cancelled' ? 'text-decoration:line-through;color:#e74c3c;' : ''}">${t.total.toFixed(2)} ETB</div>
                     </div>
                     <div style="font-size:12px;color:#e94560;margin-bottom:5px;">
                         ${t.paymentMethod === 'cash' ? '💵 Cash' : '📱 Mobile Banking'} 
@@ -743,15 +777,57 @@
                             </div>
                         `).join('')}
                     </div>
-                    ${currentUser.role === 'admin' ? `
+                    ${currentUser.role === 'admin' && t.status !== 'cancelled' ? `
                         <div style="margin-top:10px;text-align:right;">
-                            <button class="btn btn-danger" style="width:auto;padding:5px 10px;font-size:12px;" onclick="requestRefund('${t.id}')">Refund</button>
+                            <button class="cancel-btn" onclick="requestCancelTransaction('${t.id}')">Cancel</button>
+                            <button class="refund-btn" onclick="requestRefund('${t.id}')">Refund</button>
                         </div>
                     ` : ''}
                 </div>
             `).join('');
         }
 
+        // ==================== CANCEL TRANSACTION (Admin Only) ====================
+        function requestCancelTransaction(txnId) {
+            if (currentUser.role !== 'admin') {
+                showToast('Admin access required!', true);
+                return;
+            }
+            
+            pendingAdminAction = () => cancelTransaction(txnId);
+            document.getElementById('adminAuthModal').classList.remove('hidden');
+            document.getElementById('adminAuthPassword').value = '';
+            document.getElementById('adminAuthError').textContent = '';
+        }
+
+        function cancelTransaction(txnId) {
+            const txn = transactions.find(t => t.id === txnId);
+            if (!txn || txn.status === 'cancelled') return;
+            
+            // RESTORE STOCK - This is the fix!
+            txn.items.forEach(item => {
+                const invItem = items.find(i => i.id === item.id);
+                if (invItem) {
+                    invItem.stock += item.qty;
+                }
+            });
+            
+            // Mark as cancelled
+            txn.status = 'cancelled';
+            txn.cancelledDate = new Date().toISOString();
+            txn.cancelledBy = currentUser.name;
+            
+            localStorage.setItem('kb_items', JSON.stringify(items));
+            localStorage.setItem('kb_transactions', JSON.stringify(transactions));
+            
+            renderTransactions();
+            renderItems();
+            renderInventory();
+            renderStatistics();
+            showToast('Transaction cancelled - stock restored');
+        }
+
+        // ==================== REFUND (Admin Only) ====================
         function requestRefund(txnId) {
             if (currentUser.role !== 'admin') {
                 showToast('Admin access required!', true);
@@ -766,8 +842,9 @@
 
         function processRefund(txnId) {
             const txn = transactions.find(t => t.id === txnId);
-            if (!txn) return;
+            if (!txn || txn.refunded) return;
             
+            // Restore stock
             txn.items.forEach(item => {
                 const invItem = items.find(i => i.id === item.id);
                 if (invItem) {
@@ -777,6 +854,7 @@
             
             txn.refunded = true;
             txn.refundDate = new Date().toISOString();
+            txn.refundedBy = currentUser.name;
             
             localStorage.setItem('kb_items', JSON.stringify(items));
             localStorage.setItem('kb_transactions', JSON.stringify(transactions));
@@ -785,7 +863,7 @@
             renderItems();
             renderInventory();
             renderStatistics();
-            showToast('Transaction refunded successfully');
+            showToast('Transaction refunded - stock restored');
         }
 
         // ==================== INVENTORY MANAGEMENT ====================
@@ -971,10 +1049,17 @@
             pendingAdminAction = null;
         }
 
-        // ==================== STATISTICS ====================
+        // ==================== STATISTICS & PERFORMANCE GRAPH ====================
+        function setGraphPeriod(period) {
+            graphPeriod = period;
+            document.querySelectorAll('.graph-filter-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            renderPerformanceGraph();
+        }
+
         function renderStatistics() {
             const today = new Date().toDateString();
-            const todayTrans = transactions.filter(t => new Date(t.date).toDateString() === today && !t.refunded);
+            const todayTrans = transactions.filter(t => new Date(t.date).toDateString() === today && t.status !== 'cancelled');
             
             const totalRevenue = todayTrans.reduce((sum, t) => sum + t.total, 0);
             const totalItems = todayTrans.reduce((sum, t) => sum + t.items.reduce((isum, i) => isum + i.qty, 0), 0);
@@ -985,9 +1070,10 @@
             document.getElementById('itemsSold').textContent = totalItems;
             document.getElementById('avgOrder').textContent = avgOrder.toFixed(0);
             
+            // Top selling items
             const itemSales = {};
             transactions.forEach(t => {
-                if (!t.refunded) {
+                if (t.status !== 'cancelled') {
                     t.items.forEach(i => {
                         if (!itemSales[i.name]) itemSales[i.name] = 0;
                         itemSales[i.name] += i.qty;
@@ -1008,12 +1094,13 @@
                 </div>
             `).join('') || '<div style="text-align:center;color:#aaa;">No data yet</div>';
             
+            // Day of week
             const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
             const daySales = {};
             dayNames.forEach(d => daySales[d] = 0);
             
             transactions.forEach(t => {
-                if (!t.refunded) {
+                if (t.status !== 'cancelled') {
                     const day = dayNames[new Date(t.date).getDay()];
                     daySales[day] += t.total;
                 }
@@ -1030,7 +1117,149 @@
                     <div class="chart-value">${daySales[day].toFixed(0)}</div>
                 </div>
             `).join('');
+            
+            // Render performance graph
+            renderPerformanceGraph();
         }
+
+        function renderPerformanceGraph() {
+            const svg = document.getElementById('performanceGraph');
+            const container = document.getElementById('graphContainer');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            const padding = { top: 20, right: 30, bottom: 40, left: 50 };
+            
+            // Get data points based on period
+            const data = getGraphData();
+            
+            if (data.length === 0) {
+                svg.innerHTML = `<text x="${width/2}" y="${height/2}" text-anchor="middle" fill="#aaa" font-size="14">No sales data yet</text>`;
+                return;
+            }
+            
+            const maxValue = Math.max(...data.map(d => d.value), 1);
+            const minValue = 0;
+            
+            const chartWidth = width - padding.left - padding.right;
+            const chartHeight = height - padding.top - padding.bottom;
+            
+            // Generate SVG content
+            let svgContent = '';
+            
+            // Grid lines
+            for (let i = 0; i <= 5; i++) {
+                const y = padding.top + (chartHeight * i / 5);
+                const value = maxValue * (1 - i / 5);
+                svgContent += `<line class="graph-grid-line" x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" />`;
+                svgContent += `<text class="graph-axis-text" x="${padding.left - 10}" y="${y + 4}" text-anchor="end">${value.toFixed(0)}</text>`;
+            }
+            
+            // Data points and line
+            const points = data.map((d, i) => {
+                const x = padding.left + (chartWidth * i / (data.length - 1 || 1));
+                const y = padding.top + chartHeight - (chartHeight * (d.value / maxValue));
+                return { x, y, label: d.label, value: d.value };
+            });
+            
+            // Area path
+            const areaPath = `M ${points[0].x} ${padding.top + chartHeight} ` + 
+                points.map(p => `L ${p.x} ${p.y}`).join(' ') + 
+                ` L ${points[points.length-1].x} ${padding.top + chartHeight} Z`;
+            svgContent += `<path class="graph-area" d="${areaPath}" />`;
+            
+            // Line path
+            const linePath = `M ${points[0].x} ${points[0].y} ` + points.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
+            svgContent += `<path class="graph-line" d="${linePath}" />`;
+            
+            // Dots and labels
+            points.forEach((p, i) => {
+                svgContent += `<circle class="graph-dot" cx="${p.x}" cy="${p.y}" r="5" 
+                    onmouseenter="showTooltip(${p.x}, ${p.y}, '${p.label}', ${p.value})" 
+                    onmouseleave="hideTooltip()" />`;
+                
+                // X-axis labels
+                const labelX = i === 0 ? p.x + 5 : i === points.length - 1 ? p.x - 5 : p.x;
+                svgContent += `<text class="graph-axis-text" x="${labelX}" y="${height - 10}" text-anchor="${i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}">${p.label}</text>`;
+            });
+            
+            svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+            svg.innerHTML = svgContent;
+        }
+
+        function getGraphData() {
+            const now = new Date();
+            const data = [];
+            
+            if (graphPeriod === 'week') {
+                // Last 7 days
+                for (let i = 6; i >= 0; i--) {
+                    const date = new Date(now);
+                    date.setDate(date.getDate() - i);
+                    const dayTrans = transactions.filter(t => {
+                        const tDate = new Date(t.date);
+                        return tDate.toDateString() === date.toDateString() && t.status !== 'cancelled';
+                    });
+                    const total = dayTrans.reduce((sum, t) => sum + t.total, 0);
+                    data.push({
+                        label: date.toLocaleDateString('en', { weekday: 'short' }),
+                        value: total
+                    });
+                }
+            } else if (graphPeriod === 'month') {
+                // Last 30 days grouped by week
+                for (let i = 3; i >= 0; i--) {
+                    const endDate = new Date(now);
+                    endDate.setDate(endDate.getDate() - (i * 7));
+                    const startDate = new Date(endDate);
+                    startDate.setDate(startDate.getDate() - 6);
+                    
+                    const weekTrans = transactions.filter(t => {
+                        const tDate = new Date(t.date);
+                        return tDate >= startDate && tDate <= endDate && t.status !== 'cancelled';
+                    });
+                    const total = weekTrans.reduce((sum, t) => sum + t.total, 0);
+                    data.push({
+                        label: `W${4-i}`,
+                        value: total
+                    });
+                }
+            } else if (graphPeriod === 'year') {
+                // Last 12 months
+                for (let i = 11; i >= 0; i--) {
+                    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                    const monthTrans = transactions.filter(t => {
+                        const tDate = new Date(t.date);
+                        return tDate.getMonth() === date.getMonth() && tDate.getFullYear() === date.getFullYear() && t.status !== 'cancelled';
+                    });
+                    const total = monthTrans.reduce((sum, t) => sum + t.total, 0);
+                    data.push({
+                        label: date.toLocaleDateString('en', { month: 'short' }),
+                        value: total
+                    });
+                }
+            }
+            
+            return data;
+        }
+
+        function showTooltip(x, y, label, value) {
+            const tooltip = document.getElementById('graphTooltip');
+            tooltip.innerHTML = `<strong>${label}</strong><br>${value.toFixed(2)} ETB`;
+            tooltip.style.left = (x + 10) + 'px';
+            tooltip.style.top = (y - 40) + 'px';
+            tooltip.classList.add('show');
+        }
+
+        function hideTooltip() {
+            document.getElementById('graphTooltip').classList.remove('show');
+        }
+
+        // Handle window resize for graph
+        window.addEventListener('resize', () => {
+            if (currentUser && currentUser.role === 'admin') {
+                renderPerformanceGraph();
+            }
+        });
 
         // ==================== UTILITY FUNCTIONS ====================
         function showToast(message, isError = false) {
