@@ -1,6 +1,4 @@
-# Kasech-bar-and-restaurant.github.io
-Bar and restaurant POS
-<!DOCTYPE html>
+
 <html lang="en">
 <head>
     <meta charset="UTF-8">
